@@ -610,8 +610,16 @@ MonoBehaviour:
   _gridSpacing: 0.05
   _gridCellStartOffsetY: 10
   _cellPrefab: {fileID: 1217073250853203347, guid: baf631650ddd6420da9b710470a40201, type: 3}
+  _playablePrefab: {fileID: 8188011693211613885, guid: 79e701d7a3a6243b3b39f1fb00c50c09, type: 3}
   _gridAnimationCurve: 24
   _gridAnimationSpeed: 1
+  _playableColors:
+  - {r: 1, g: 0, b: 0, a: 1}
+  - {r: 0.38851166, g: 0, b: 1, a: 1}
+  - {r: 1, g: 0.5087234, b: 0, a: 1}
+  - {r: 0, g: 0.6320754, b: 0.081728786, a: 1}
+  - {r: 0, g: 0.4433962, b: 0.42237425, a: 1}
+  - {r: 0, g: 0.12961723, b: 0.44313726, a: 1}
 --- !u!4 &1377939345
 Transform:
   m_ObjectHideFlags: 0

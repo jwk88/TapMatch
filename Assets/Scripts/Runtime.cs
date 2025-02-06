@@ -15,6 +15,7 @@ namespace MyTapMatch
         GameClient _client;
         List<CellView> _views;
         Transform _gridParent;
+        Transform _playableParent;
 
         public Runtime(GameClient client)
         {
@@ -27,8 +28,14 @@ namespace MyTapMatch
             _actives = new List<Coroutine>();
 
             _gridParent = new GameObject("Grid").transform;
-            var gridViews = CreateViews<CellView>(_gridParent);
-            _gameRoutine = client.StartCoroutine(Game(gridViews));
+            _playableParent = new GameObject("Playables").transform;
+
+            var gridViews = CreateViews(_client.CellPrefab, _gridParent);
+            var colorViews = CreateViews(_client.PlayablePrefab, _playableParent);
+            
+            FormatColors(colorViews);
+            
+            _gameRoutine = client.StartCoroutine(Game(gridViews, colorViews));
         }
 
         ~Runtime()
@@ -64,9 +71,9 @@ namespace MyTapMatch
             _gameRoutine = null;
         }
 
-        public IEnumerator Game(HashSet<CellView> gameGrid)
+        public IEnumerator Game(HashSet<CellView> gameGrid, HashSet<PlayableView> playables)
         {
-            AnimateGridIn(gameGrid);
+            TransitionIn(gameGrid, playables);
 
             while (true)
             {
@@ -96,12 +103,12 @@ namespace MyTapMatch
             done?.Invoke();
         }
 
-        HashSet<CellView> CreateViews<T>(Transform parent = null) where T : CellView
+        HashSet<T> CreateViews<T>(T prefab, Transform parent = null) where T : CellView
         {   
-            var set = new HashSet<CellView>();
+            var set = new HashSet<T>();
             foreach (var cell in _grid)
             {
-                var cellView = GameObject.Instantiate(_client.CellPrefab, parent);
+                var cellView = GameObject.Instantiate(prefab, parent);
                 cellView.Initialize(cell, _client.GameWidth, _client.GameHeight, _client.CellSize, _client.GridSpacing);
 
                 var gamePos = cellView.GamePosition;
@@ -114,9 +121,30 @@ namespace MyTapMatch
             return set;
         }
 
-        void AnimateGridIn(HashSet<CellView> grid)
+        void FormatColors<T>(HashSet<T> cells) where T : CellView
+        {
+            var colors = _client.PlayableColors;
+            foreach (var entry in cells)
+            {
+                var rng = UnityEngine.Random.Range(0, colors.Length);
+                var color = colors[rng];
+                entry.Renderer.color = color;
+            }
+        }
+
+        void TransitionIn(HashSet<CellView> grid, HashSet<PlayableView> playables)
         {
             foreach (var view in grid)
+            {
+                view.gameObject.SetActive(true);
+
+                var curve = _client.GridAnimationCurve;
+                var speed = _client.GridAnimationSpeed;
+
+                _batch.Enqueue(Lerp(view.transform, view.transform.position, view.GamePosition, curve, speed));
+            }
+
+            foreach (var view in playables)
             {
                 view.gameObject.SetActive(true);
 

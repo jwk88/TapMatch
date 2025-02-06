@@ -8,6 +8,7 @@ namespace MyTapMatch
 
         public Cell Cell { get => _cell; private set => _cell = value; }
         public Vector3 GamePosition { get => _gamePosition; private set => _gamePosition = value; }
+        public SpriteRenderer Renderer { get => _renderer; private set => _renderer = value; }
 
         Cell _cell;
         Vector3 _gamePosition;
