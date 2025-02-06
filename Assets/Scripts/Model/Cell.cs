@@ -4,15 +4,25 @@ using UnityEngine;
 
 namespace MyTapMatch
 {
+    [Serializable]
     public struct Cell : IEqualityComparer<Cell>, IEquatable<Cell>
     {
         public int X;
         public int Y;
+        public float r, g, b, a;
+        public bool Unoccupied;
 
         public Cell(int x, int y)
         {
             X = x;
             Y = y;
+
+            r = 0;
+            g = 0;
+            b = 0;
+            a = 0;
+
+            Unoccupied = true;
         }
 
         public bool Equals(Cell a, Cell b)

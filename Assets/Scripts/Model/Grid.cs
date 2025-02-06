@@ -4,11 +4,12 @@ using System.Collections.Generic;
 
 namespace MyTapMatch
 {
+    [Serializable]
     public class Grid : IEnumerable<Cell>
     {
-        Cell[] _grid;
-        int _width;
-        int _height;
+        protected Cell[] _grid;
+        protected int _width;
+        protected int _height;
         
         public Grid(int width, int height)
         {
@@ -40,6 +41,38 @@ namespace MyTapMatch
                         set.Add(_grid[y * _width + x]);
                     }
                 }
+            }
+            return set;
+        }
+
+        public void AssignColor(int x, int y, float r, float g, float b, float a)
+        {
+            var cell = _grid[y * _width + x];
+            cell.r = r;
+            cell.g = g;
+            cell.b = b;
+            cell.a = a;
+            cell.Unoccupied = false;
+            _grid[y * _width + x] = cell;
+        }
+
+        public void FreeUpCell(int x, int y)
+        {
+            var cell = _grid[y * _width + x];
+            cell.r = 0;
+            cell.g = 0;
+            cell.b = 0;
+            cell.a = 0;
+            cell.Unoccupied = true;
+            _grid[y * _width + x] = cell;
+        }
+
+        public HashSet<(float, float, float, float)> GetColors()
+        {
+            var set = new HashSet<(float, float, float, float)>();
+            foreach (var cell in _grid)
+            {
+                set.Add((cell.r, cell.g, cell.b, cell.a));
             }
             return set;
         }
