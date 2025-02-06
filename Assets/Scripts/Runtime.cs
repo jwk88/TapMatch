@@ -11,97 +11,98 @@ namespace MyTapMatch
         GameClient _client;
 
         Coroutine _gameRoutine;
-        Queue<IEnumerator> _queue;
         Queue<IEnumerator> _batch;
         List<Coroutine> _actives;
 
-        HashSet<CellView> _views;
-        HashSet<PlayableView> _inPlay;
-        HashSet<PlayableView> _pool;
+        List<CellView> _allViews;
+        HashSet<PlayableView> _playables;
+        Queue<PlayableView> _pool;
 
         Transform _gridParent;
         Transform _playableParent;
+        IInputController _inputController;
 
-        public Runtime(GameClient client)
+        public Runtime(GameClient client, IInputController inputController)
         {
             _client = client;
-            _views = new HashSet<CellView>();
-            _inPlay = new HashSet<PlayableView>();
-            _pool = new HashSet<PlayableView>();
+            _allViews = new List<CellView>();
+            _pool = new Queue<PlayableView>();
+            _playables = new HashSet<PlayableView>();
             _grid = new Grid(_client.GameWidth, client.GameHeight);
+            _inputController = inputController;
 
-            _queue = new Queue<IEnumerator>();
             _batch = new Queue<IEnumerator>();
             _actives = new List<Coroutine>();
 
             _gridParent = new GameObject("Grid").transform;
             _playableParent = new GameObject("Playables").transform;
 
-            var gridViews = CreateViews(_client.CellPrefab, _gridParent);
-            var colorViews = CreateViews(_client.PlayablePrefab, _playableParent);
-            
-            FormatColors(colorViews);
-            
-            _gameRoutine = client.StartCoroutine(GameStart(gridViews, colorViews));
+            var gridViews = CellView.CreateViews(_client, _grid, _client.CellPrefab, _gridParent);
+            var colorViews = CellView.CreateViews(_client, _grid, _client.PlayablePrefab, _playableParent);
+
+            _allViews.AddRange(gridViews);
+            _allViews.AddRange(colorViews);
+
+            FormatGame(gridViews, colorViews);
+            _gameRoutine = client.StartCoroutine(GameLoop());
         }
 
         ~Runtime()
         {
-            Debug.Log("Flushing runtime");
             Flush();   
         }
 
         public void Flush()
         {
-            _queue.Clear();
-
-            foreach (var active in _actives)
-            {
-                _client.StopCoroutine(active);
-            }
-
-            foreach (var view in _views)
-            {
-                GameObject.Destroy(view.gameObject);
-            }
+            foreach (var active in _actives) { _client.StopCoroutine(active); }
+            foreach (var view in _allViews) { GameObject.Destroy(view.gameObject); }
             
-            _views.Clear();
+            _allViews.Clear();
             _grid = null;
             
             GameObject.Destroy(_gridParent.gameObject);
             GameObject.Destroy(_playableParent.gameObject);
 
-            if (_gameRoutine != null)
-            {
-                _client.StopCoroutine(_gameRoutine);
-            }
+            if (_gameRoutine != null) _client.StopCoroutine(_gameRoutine);
             
             _gameRoutine = null;
         }
 
-        public IEnumerator GameStart(HashSet<CellView> gameGrid, HashSet<PlayableView> playables)
+        void FormatGame(HashSet<CellView> gridViews, HashSet<PlayableView> playables)
         {
-            TransitionIn(gameGrid, playables);
-
-            while (_batch.Count > 0)
+            foreach (var view in gridViews)
             {
-                var next = _batch.Dequeue();
-                _client.StartCoroutine(RunSubroutine(next));
-                yield return null;
+                view.gameObject.SetActive(true);
+                view.transform.position = view.WorldPosition;
             }
 
-            _inPlay = new HashSet<PlayableView>(playables);
-            yield return GameLoop();   
+            foreach (var playable in playables)
+            {
+                _playables.Add(playable);
+                PoolIn(playable);
+            }
+
+            var colors = _client.PlayableColors;
+            foreach (var cell in _grid)
+            {
+                var rng = UnityEngine.Random.Range(0, colors.Length);
+                var color = colors[rng];
+                _grid.AssignColor(cell.X, cell.Y, color.r, color.g, color.b, color.a);
+                
+                PoolOut(cell.X, cell.Y);
+            }
         }
 
         public IEnumerator GameLoop()
         {
             while (true)
             {
-                while (_queue.Count > 0)
+                foreach (var playable in _playables)
                 {
-                    var next = _queue.Dequeue();
-                    yield return RunSubroutine(next);
+                    if (playable.Dirty)
+                    {
+                        PlayIn(playable);
+                    }
                 }
 
                 while (_batch.Count > 0)
@@ -111,10 +112,37 @@ namespace MyTapMatch
                     yield return null;
                 }
 
+                foreach (var playable in _playables)
+                {
+                    playable.Dirty = false;
+                }
+
+                _inputController.Refresh();
+                if (_inputController.MouseClickThisFrame)
+                {
+                    UpdateMouseInput();
+                }
+
                 yield return null;
             }
         }
 
+        void UpdateMouseInput()
+        {
+            var ray = Camera.main.ScreenPointToRay(_inputController.MouseScreenPos);
+            var hit = Physics2D.Raycast(ray.origin, ray.direction);
+
+            if (hit.collider != null)
+            {
+                var view = hit.collider.GetComponent<PlayableView>();
+                if (view != null)
+                {
+                    ProcessClick(view);
+                }
+            }
+        }
+
+        // TOOD: remove this, unnecessary
         IEnumerator RunSubroutine(IEnumerator subroutine, Action done = null)
         {
             var execution = _client.StartCoroutine(subroutine);
@@ -124,101 +152,91 @@ namespace MyTapMatch
             done?.Invoke();
         }
 
-        HashSet<T> CreateViews<T>(T prefab, Transform parent = null) where T : CellView
-        {   
-            var set = new HashSet<T>();
-            foreach (var cell in _grid)
-            {
-                var cellView = GameObject.Instantiate(prefab, parent);
-                cellView.Initialize(cell, _client.GameWidth, _client.GameHeight, _client.CellSize, _client.GridSpacing);
-
-                var gamePos = cellView.GamePosition;
-                cellView.transform.position = gamePos + (Vector3.up * _client.GridCellStartOffsetY);
-                cellView.gameObject.SetActive(false);
-                set.Add(cellView);
-                _views.Add(cellView);
-            }
-
-            return set;
-        }
-
-        void FormatColors<T>(HashSet<T> cells) where T : CellView
+        public void PlayIn(PlayableView playable)
         {
-            var colors = _client.PlayableColors;
-            foreach (var entry in cells)
-            {
-                var rng = UnityEngine.Random.Range(0, colors.Length);
-                var color = colors[rng];
-                entry.Renderer.color = color;
-            }
-        }
+            var curve = _client.GridAnimationCurve;
+            var speed = _client.GridAnimationSpeed;
 
-        void TransitionIn(HashSet<CellView> grid, HashSet<PlayableView> playables)
-        {
-            foreach (var view in grid)
-            {
-                view.gameObject.SetActive(true);
-
-                var curve = _client.GridAnimationCurve;
-                var speed = _client.GridAnimationSpeed;
-
-                _batch.Enqueue(Lerp(view.transform, view.transform.position, view.GamePosition, curve, speed));
-            }
-
-            foreach (var view in playables)
-            {
-                view.gameObject.SetActive(true);
-
-                var curve = _client.GridAnimationCurve;
-                var speed = _client.GridAnimationSpeed;
-
-                _batch.Enqueue(Lerp(view.transform, view.transform.position, view.GamePosition, curve, speed));
-            }
-        }
-
-        IEnumerator Lerp(Transform transform, Vector3 a, Vector3 b, EasingFunction.Ease easing, float speed = 1f)
-        {
-            var t = 0f;
-            while (t < 1f)
-            {
-                t += Time.deltaTime * speed;
-                var easeFunction = EasingFunction.GetEasingFunction(easing);
-                var eased = easeFunction(0, 1, t);
-                transform.position = Vector3.Lerp(a, b, eased);
-                yield return null;
-            }
+            playable.gameObject.SetActive(true);
+            var lerp = playable.Lerp(playable.transform, playable.transform.position, playable.WorldPosition, curve, speed);
+            _batch.Enqueue(lerp);
         }
 
         public void ProcessClick(PlayableView view)
         {
-            if (!_inPlay.Contains(view)) return;
+            if (view.Dirty) return;
+            PoolIn(view, poolOutInstantly: true);
+        }
 
-            var neighbours = _grid.GetNeighbours(view.Cell);
-            var clickedColor = view.Renderer.color;
-            foreach (var entry in _views)
+        public void PoolOut(int x, int y, bool newColor = false)
+        {
+            var next = _pool.Dequeue();
+
+            var width = _client.GameWidth;
+            var height = _client.GameHeight;
+            var size = _client.CellSize;
+            var spacing = _client.GridSpacing;
+            var yOffset = _client.GridCellStartOffsetY;
+
+            if (newColor)
             {
-                if (entry is PlayableView)
+                var colors = _client.PlayableColors;
+                var rng = UnityEngine.Random.Range(0, colors.Length);
+                var color = colors[rng];
+                _grid.AssignColor(x, y, color.r, color.g, color.b, color.a);
+            }
+            
+            var cell = _grid[x, y];
+            next.Initialize(cell, width, height, size, spacing, yOffset);
+            next.SetColor(cell);
+            next.Dirty = true;
+        }
+
+        public void PoolIn(PlayableView playable, bool poolOutInstantly = false)
+        {
+            playable.gameObject.SetActive(false);
+            _pool.Enqueue(playable);
+
+            var yMax = _client.GameHeight;
+            var currentX = playable.X;
+            var currentY = playable.Y + 1;
+
+            for (int y = currentY; y < yMax; y++)
+            {
+                foreach (var entry in _playables)
                 {
-                    var neighbourPlayable = entry as PlayableView;
-                    if (neighbourPlayable.Renderer.color != clickedColor) continue;
-                    foreach (var neighbour in neighbours)
+                    if (_pool.Contains(entry)) continue;
+                    if (entry.X != currentX) continue;
+                    if (entry.Y == y)
                     {
-                        if (neighbourPlayable.Cell == neighbour)
+                        if (y - 1 >= 0)
                         {
-                            PoolPlayable(neighbourPlayable);
+                            var current = _grid[entry.X, entry.Y];
+                            var below = _grid[entry.X, entry.Y - 1];
+                            entry.UpdatePosition(below);
+                            entry.Dirty = true;
+
+                            var c = entry.Renderer.color;
+                            _grid.AssignColor(below.X, below.Y, c.r, c.g, c.b, c.a);
+                            _grid.FreeUpCell(current.X, current.Y);
                         }
                     }
                 }
             }
-            
-            PoolPlayable(view);
-        }
 
-        public void PoolPlayable(PlayableView playable)
-        {
-            _inPlay.Remove(playable);
-            _pool.Add(playable);
-            playable.gameObject.SetActive(false);
+            if (poolOutInstantly)
+            {
+                foreach (var cell in _grid)
+                {
+                    if (cell.Unoccupied)
+                    {
+                        if (_pool.Count > 0)
+                        {
+                            PoolOut(cell.X, cell.Y, newColor: true);
+                        }
+                    }
+                }
+            }
         }
     }
 }

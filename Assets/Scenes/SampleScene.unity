@@ -384,7 +384,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f5c03a72215a2422593e86446bb7e0f1, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  _client: {fileID: 1377939344}
 --- !u!1 &1165183222
 GameObject:
   m_ObjectHideFlags: 0
@@ -649,11 +648,12 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 9f5def0eb03134488b1ca07c1ae692e2, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  _inputListener: {fileID: 845127562}
   _gameWidth: 8
   _gameHeight: 8
   _cellSize: 1
   _gridSpacing: 0.05
-  _gridCellStartOffsetY: 10
+  _gridCellStartOffsetY: 5
   _cellPrefab: {fileID: 1217073250853203347, guid: baf631650ddd6420da9b710470a40201, type: 3}
   _playablePrefab: {fileID: 8188011693211613885, guid: 79e701d7a3a6243b3b39f1fb00c50c09, type: 3}
   _gridAnimationCurve: 24

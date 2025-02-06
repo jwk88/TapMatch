@@ -4,6 +4,7 @@ namespace MyTapMatch
 {
     public class GameClient : MonoBehaviour
     {
+        [SerializeField] InputListener _inputListener;
         [SerializeField] int _gameWidth = 8;
         [SerializeField] int _gameHeight = 8;
         [SerializeField] int _cellSize = 1;
@@ -35,15 +36,7 @@ namespace MyTapMatch
                 _runtime.Flush();
             }
 
-            _runtime = new Runtime(this);
-        }
-
-        public void ClickOn(PlayableView view)
-        {
-            if (_runtime != null)
-            {
-                _runtime.ProcessClick(view);
-            }
+            _runtime = new Runtime(this, _inputListener);
         }
     }
 }
