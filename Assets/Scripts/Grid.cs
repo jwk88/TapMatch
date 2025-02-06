@@ -15,6 +15,13 @@ namespace MyTapMatch
             _height = height;
 
             _grid = new Cell[width * height];
+            for (int y = 0; y < _height; y++)
+            {
+                for (int x = 0; x < _width; x++)
+                {
+                    _grid[y * _width + x] = new Cell(x, y);
+                }
+            }
         }
 
         public Cell this[int x, int y]

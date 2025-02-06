@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using UnityEngine;
 
 namespace MyTapMatch
 {
@@ -27,6 +28,11 @@ namespace MyTapMatch
         public int GetHashCode(Cell obj)
         {
             return obj.X.GetHashCode() ^ obj.Y.GetHashCode();
+        }
+
+        public Vector3 Vector3()
+        {
+            return new Vector3(X, Y, 0);
         }
     }
 }
