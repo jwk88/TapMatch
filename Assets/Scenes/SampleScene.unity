@@ -606,7 +606,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   _gameWidth: 8
   _gameHeight: 8
-  _cellSize: 5
+  _cellSize: 1
   _gridSpacing: 0.05
   _gridCellStartOffsetY: 10
   _cellPrefab: {fileID: 1217073250853203347, guid: baf631650ddd6420da9b710470a40201, type: 3}
