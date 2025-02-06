@@ -8,19 +8,26 @@ namespace MyTapMatch
     public class Runtime
     {
         Grid _grid;
+        GameClient _client;
+
         Coroutine _gameRoutine;
         Queue<IEnumerator> _queue;
         Queue<IEnumerator> _batch;
         List<Coroutine> _actives;
-        GameClient _client;
-        List<CellView> _views;
+
+        HashSet<CellView> _views;
+        HashSet<PlayableView> _inPlay;
+        HashSet<PlayableView> _pool;
+
         Transform _gridParent;
         Transform _playableParent;
 
         public Runtime(GameClient client)
         {
             _client = client;
-            _views = new List<CellView>();
+            _views = new HashSet<CellView>();
+            _inPlay = new HashSet<PlayableView>();
+            _pool = new HashSet<PlayableView>();
             _grid = new Grid(_client.GameWidth, client.GameHeight);
 
             _queue = new Queue<IEnumerator>();
@@ -35,7 +42,7 @@ namespace MyTapMatch
             
             FormatColors(colorViews);
             
-            _gameRoutine = client.StartCoroutine(Game(gridViews, colorViews));
+            _gameRoutine = client.StartCoroutine(GameStart(gridViews, colorViews));
         }
 
         ~Runtime()
@@ -62,6 +69,7 @@ namespace MyTapMatch
             _grid = null;
             
             GameObject.Destroy(_gridParent.gameObject);
+            GameObject.Destroy(_playableParent.gameObject);
 
             if (_gameRoutine != null)
             {
@@ -71,10 +79,23 @@ namespace MyTapMatch
             _gameRoutine = null;
         }
 
-        public IEnumerator Game(HashSet<CellView> gameGrid, HashSet<PlayableView> playables)
+        public IEnumerator GameStart(HashSet<CellView> gameGrid, HashSet<PlayableView> playables)
         {
             TransitionIn(gameGrid, playables);
 
+            while (_batch.Count > 0)
+            {
+                var next = _batch.Dequeue();
+                _client.StartCoroutine(RunSubroutine(next));
+                yield return null;
+            }
+
+            _inPlay = new HashSet<PlayableView>(playables);
+            yield return GameLoop();   
+        }
+
+        public IEnumerator GameLoop()
+        {
             while (true)
             {
                 while (_queue.Count > 0)
@@ -166,6 +187,38 @@ namespace MyTapMatch
                 transform.position = Vector3.Lerp(a, b, eased);
                 yield return null;
             }
+        }
+
+        public void ProcessClick(PlayableView view)
+        {
+            if (!_inPlay.Contains(view)) return;
+
+            var neighbours = _grid.GetNeighbours(view.Cell);
+            var clickedColor = view.Renderer.color;
+            foreach (var entry in _views)
+            {
+                if (entry is PlayableView)
+                {
+                    var neighbourPlayable = entry as PlayableView;
+                    if (neighbourPlayable.Renderer.color != clickedColor) continue;
+                    foreach (var neighbour in neighbours)
+                    {
+                        if (neighbourPlayable.Cell == neighbour)
+                        {
+                            PoolPlayable(neighbourPlayable);
+                        }
+                    }
+                }
+            }
+            
+            PoolPlayable(view);
+        }
+
+        public void PoolPlayable(PlayableView playable)
+        {
+            _inPlay.Remove(playable);
+            _pool.Add(playable);
+            playable.gameObject.SetActive(false);
         }
     }
 }

@@ -36,7 +36,15 @@ namespace MyTapMatch
             }
 
             _runtime = new Runtime(this);
-        }   
+        }
+
+        public void ClickOn(PlayableView view)
+        {
+            if (_runtime != null)
+            {
+                _runtime.ProcessClick(view);
+            }
+        }
     }
 }
 

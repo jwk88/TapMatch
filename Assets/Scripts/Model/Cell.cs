@@ -34,6 +34,30 @@ namespace MyTapMatch
         {
             return new Vector3(X, Y, 0);
         }
+
+        public override bool Equals(object obj)
+        {
+            if (obj is Cell)
+            {
+                return Equals((Cell)obj);
+            }
+            return false;
+        }
+
+        public override int GetHashCode()
+        {
+            return X.GetHashCode() ^ Y.GetHashCode();
+        }
+
+        public static bool operator ==(Cell a, Cell b)
+        {
+            return a.Equals(b);
+        }
+
+        public static bool operator !=(Cell a, Cell b)
+        {
+            return !a.Equals(b);
+        }
     }
 }
 
