@@ -1,6 +1,5 @@
 namespace MyTapMatch
 {
-    using System;
     using System.Collections;
     using System.Collections.Generic;
     using UnityEngine;
@@ -12,7 +11,7 @@ namespace MyTapMatch
 
         Coroutine _gameRoutine;
         Queue<IEnumerator> _batch;
-        List<Coroutine> _actives;
+        List<Coroutine> _activeSubroutines;
 
         List<CellView> _allViews;
         HashSet<PlayableView> _playables;
@@ -32,7 +31,7 @@ namespace MyTapMatch
             _inputController = inputController;
 
             _batch = new Queue<IEnumerator>();
-            _actives = new List<Coroutine>();
+            _activeSubroutines = new List<Coroutine>();
 
             _gridParent = new GameObject("Grid").transform;
             _playableParent = new GameObject("Playables").transform;
@@ -54,7 +53,7 @@ namespace MyTapMatch
 
         public void Flush()
         {
-            foreach (var active in _actives) { _client.StopCoroutine(active); }
+            foreach (var active in _activeSubroutines) { _client.StopCoroutine(active); }
             foreach (var view in _allViews) { GameObject.Destroy(view.gameObject); }
             
             _allViews.Clear();
@@ -70,26 +69,17 @@ namespace MyTapMatch
 
         void FormatGame(HashSet<CellView> gridViews, HashSet<PlayableView> playables)
         {
+            _playables = playables;
+
             foreach (var view in gridViews)
             {
                 view.gameObject.SetActive(true);
                 view.transform.position = view.WorldPosition;
             }
 
-            foreach (var playable in playables)
+            foreach (var playable in _playables)
             {
-                _playables.Add(playable);
-                PoolIn(playable);
-            }
-
-            var colors = _client.PlayableColors;
-            foreach (var cell in _grid)
-            {
-                var rng = UnityEngine.Random.Range(0, colors.Length);
-                var color = colors[rng];
-                _grid.AssignColor(cell.X, cell.Y, color.r, color.g, color.b, color.a);
-                
-                PoolOut(cell.X, cell.Y);
+                Spawn(playable);
             }
         }
 
@@ -97,14 +87,6 @@ namespace MyTapMatch
         {
             while (true)
             {
-                foreach (var playable in _playables)
-                {
-                    if (playable.Dirty)
-                    {
-                        PlayIn(playable);
-                    }
-                }
-
                 while (_batch.Count > 0)
                 {
                     var next = _batch.Dequeue();
@@ -112,15 +94,22 @@ namespace MyTapMatch
                     yield return null;
                 }
 
-                foreach (var playable in _playables)
-                {
-                    playable.Dirty = false;
-                }
-
                 _inputController.Refresh();
                 if (_inputController.MouseClickThisFrame)
                 {
                     UpdateMouseInput();
+                }
+
+                if (_activeSubroutines.Count > 0)
+                {
+                    yield return null;
+                    continue;
+                }
+
+                while (_pool.Count > 0)
+                {
+                    var next = _pool.Dequeue();
+                    Spawn(next);
                 }
 
                 yield return null;
@@ -142,17 +131,16 @@ namespace MyTapMatch
             }
         }
 
-        // TOOD: remove this, unnecessary
-        IEnumerator RunSubroutine(IEnumerator subroutine, Action done = null)
+        IEnumerator RunSubroutine(IEnumerator subroutine)
         {
             var execution = _client.StartCoroutine(subroutine);
-            _actives.Add(execution);
+            
+            _activeSubroutines.Add(execution);
             yield return execution;
-            _actives.Remove(execution);
-            done?.Invoke();
+            _activeSubroutines.Remove(execution);
         }
 
-        public void PlayIn(PlayableView playable)
+        public void MovePlayable(PlayableView playable)
         {
             var curve = _client.GridAnimationCurve;
             var speed = _client.GridAnimationSpeed;
@@ -165,12 +153,82 @@ namespace MyTapMatch
         public void ProcessClick(PlayableView view)
         {
             if (view.Dirty) return;
-            PoolIn(view, poolOutInstantly: true);
+            
+            var origin = _grid[view.X, view.Y];
+            PoolNeighboursRecursively(origin, view);
+            UpdateColumns();
         }
 
-        public void PoolOut(int x, int y, bool newColor = false)
+        void UpdateColumns()
         {
-            var next = _pool.Dequeue();
+            var emptyColumns = new HashSet<int>();
+            foreach (var cell in _grid)
+            {
+                if (cell.Unoccupied)
+                {
+                    emptyColumns.Add(cell.X);
+                }
+            }
+
+            var moved = new HashSet<PlayableView>();
+            foreach (var emptyColumn in emptyColumns)
+            {
+                var x = emptyColumn;
+                for (int y = 0; y < _client.GameHeight; y++)
+                {
+                    var cell = _grid[x, y];
+                    if (cell.Unoccupied)
+                    {
+                        var y1 = y;
+                        for (;y1 < _client.GameHeight; y1++)
+                        {
+                            if (!_grid[x, y1].Unoccupied)
+                            {
+                                break;
+                            }
+                        }
+
+                        if (y1 >= _client.GameHeight) continue;
+
+                        var playable = GetPlayableView(x, y1);
+                        var color = playable.Renderer.color;
+
+                        playable.UpdatePosition(cell);
+                        _grid.AssignColor(cell.X, cell.Y, color.r, color.g, color.b, color.a);
+                        _grid.FreeUpCell(x, y1);
+                        moved.Add(playable);
+                    }
+                }
+
+                foreach (var move in moved)
+                {
+                    MovePlayable(move);
+                }
+
+                //_updatingPlayables = true;
+            }
+        }
+
+        PlayableView GetPlayableView(int x, int y)
+        {
+            foreach (var entry in _playables)
+            {
+                if (_pool.Contains(entry)) continue;
+                if (entry.X == x && entry.Y == y)
+                {
+                    return entry;
+                }
+            }
+            return null;
+        }
+
+        public void Spawn(PlayableView next)
+        {
+            if (!_grid.TryGetUnoccupied(out var cell))
+            {
+                Debug.Log("no unoccupied cells...");
+                return;
+            }
 
             var width = _client.GameWidth;
             var height = _client.GameHeight;
@@ -178,62 +236,38 @@ namespace MyTapMatch
             var spacing = _client.GridSpacing;
             var yOffset = _client.GridCellStartOffsetY;
 
-            if (newColor)
-            {
-                var colors = _client.PlayableColors;
-                var rng = UnityEngine.Random.Range(0, colors.Length);
-                var color = colors[rng];
-                _grid.AssignColor(x, y, color.r, color.g, color.b, color.a);
-            }
-            
-            var cell = _grid[x, y];
+            var colors = _client.PlayableColors;
+            var rng = UnityEngine.Random.Range(0, colors.Length);
+            var color = colors[rng];
+
+            _grid.AssignColor(cell.X, cell.Y, color.r, color.g, color.b, color.a);
+            cell = _grid[cell.X, cell.Y];
+
             next.Initialize(cell, width, height, size, spacing, yOffset);
             next.SetColor(cell);
-            next.Dirty = true;
+
+            MovePlayable(next);
         }
 
-        public void PoolIn(PlayableView playable, bool poolOutInstantly = false)
+        public void PoolNeighboursRecursively(Cell origin, PlayableView originView)
         {
-            playable.gameObject.SetActive(false);
-            _pool.Enqueue(playable);
+            originView.gameObject.SetActive(false);
 
-            var yMax = _client.GameHeight;
-            var currentX = playable.X;
-            var currentY = playable.Y + 1;
-
-            for (int y = currentY; y < yMax; y++)
+            _pool.Enqueue(originView);
+            _grid.FreeUpCell(origin.X, origin.Y);
+            
+            var neighbours = _grid.GetNeighbours(origin);
+            foreach (var playable in _playables)
             {
-                foreach (var entry in _playables)
+                if (playable == originView) continue;
+                if (_pool.Contains(playable)) continue;
+                if (playable.Renderer.color != originView.Renderer.color) continue;
+                foreach (var neighbour in neighbours)
                 {
-                    if (_pool.Contains(entry)) continue;
-                    if (entry.X != currentX) continue;
-                    if (entry.Y == y)
+                    var playableCell = _grid[playable.X, playable.Y];
+                    if (playableCell == neighbour)
                     {
-                        if (y - 1 >= 0)
-                        {
-                            var current = _grid[entry.X, entry.Y];
-                            var below = _grid[entry.X, entry.Y - 1];
-                            entry.UpdatePosition(below);
-                            entry.Dirty = true;
-
-                            var c = entry.Renderer.color;
-                            _grid.AssignColor(below.X, below.Y, c.r, c.g, c.b, c.a);
-                            _grid.FreeUpCell(current.X, current.Y);
-                        }
-                    }
-                }
-            }
-
-            if (poolOutInstantly)
-            {
-                foreach (var cell in _grid)
-                {
-                    if (cell.Unoccupied)
-                    {
-                        if (_pool.Count > 0)
-                        {
-                            PoolOut(cell.X, cell.Y, newColor: true);
-                        }
+                        PoolNeighboursRecursively(playableCell, playable);
                     }
                 }
             }

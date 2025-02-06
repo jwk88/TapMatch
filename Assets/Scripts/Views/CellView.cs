@@ -10,7 +10,7 @@ namespace MyTapMatch
 
         public int X { get; private set; }
         public int Y { get; private set; }
-        public bool Dirty { get; set; }
+        public bool Dirty { get; private set; }
         public Vector3 WorldPosition { get => _worldPosition; private set => _worldPosition = value; }
         public SpriteRenderer Renderer { get => _renderer; private set => _renderer = value; }
 
@@ -44,6 +44,11 @@ namespace MyTapMatch
             WorldPosition = vec3;
         }
 
+        public virtual void SetOnWorldPosition()
+        {
+            transform.position = _worldPosition;
+        }
+
         public virtual void UpdatePosition(Cell cell)
         {
             X = cell.X;
@@ -63,6 +68,7 @@ namespace MyTapMatch
 
         public IEnumerator Lerp(Transform transform, Vector3 a, Vector3 b, EasingFunction.Ease easing, float speed = 1f)
         {
+            Dirty = true;
             var t = 0f;
             while (t < 1f)
             {
@@ -74,6 +80,7 @@ namespace MyTapMatch
             }
 
             transform.position = b;
+            Dirty = false;
         }
 
         public static HashSet<T> CreateViews<T>(GameClient _client, Grid gameGrid, T prefab, Transform parent = null) where T : CellView

@@ -45,6 +45,20 @@ namespace MyTapMatch
             return set;
         }
 
+        public bool TryGetUnoccupied(out Cell cell)
+        {
+            cell = default(Cell);
+            foreach (var entry in _grid)
+            {
+                if (entry.Unoccupied)
+                {
+                    cell = entry;
+                    return true;
+                }
+            }
+            return false;
+        }
+
         public void AssignColor(int x, int y, float r, float g, float b, float a)
         {
             var cell = _grid[y * _width + x];
