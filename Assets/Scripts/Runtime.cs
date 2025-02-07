@@ -35,6 +35,8 @@ namespace MyTapMatch
 
             _gridParent = new GameObject("Grid").transform;
             _playableParent = new GameObject("Playables").transform;
+            _gridParent.parent = _client.ViewParent;
+            _playableParent.parent = _client.ViewParent;
 
             var gridViews = CellView.CreateViews(_client, _grid, _client.CellPrefab, _gridParent);
             var colorViews = CellView.CreateViews(_client, _grid, _client.PlayablePrefab, _playableParent);
@@ -74,13 +76,17 @@ namespace MyTapMatch
             foreach (var view in gridViews)
             {
                 view.gameObject.SetActive(true);
-                view.transform.position = view.WorldPosition;
+                view.transform.localPosition = view.WorldPosition;
             }
 
             foreach (var playable in _playables)
             {
                 Spawn(playable);
             }
+
+            _client.ViewParent.transform.position = _client.ViewOffset;
+            _gridParent.transform.localPosition = Vector2.zero;
+            _playableParent.transform.localPosition = Vector2.zero;
         }
 
         public IEnumerator GameLoop()
@@ -146,7 +152,7 @@ namespace MyTapMatch
             var speed = _client.GridAnimationSpeed;
 
             playable.gameObject.SetActive(true);
-            var lerp = playable.Lerp(playable.transform, playable.transform.position, playable.WorldPosition, curve, speed);
+            var lerp = playable.Lerp(playable.transform, playable.transform.localPosition, playable.WorldPosition, curve, speed);
             _batch.Enqueue(lerp);
         }
 
@@ -204,8 +210,6 @@ namespace MyTapMatch
                 {
                     MovePlayable(move);
                 }
-
-                //_updatingPlayables = true;
             }
         }
 

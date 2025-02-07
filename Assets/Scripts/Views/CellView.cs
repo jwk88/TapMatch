@@ -39,14 +39,9 @@ namespace MyTapMatch
             vec3.y *= size + spacing;
 
             transform.localScale = Vector3.one * size;
-            transform.position = vec3 + (Vector3.up * yOffset);
+            transform.localPosition = vec3 + (Vector3.up * yOffset);
             
             WorldPosition = vec3;
-        }
-
-        public virtual void SetOnWorldPosition()
-        {
-            transform.position = _worldPosition;
         }
 
         public virtual void UpdatePosition(Cell cell)
@@ -75,11 +70,11 @@ namespace MyTapMatch
                 t += Time.deltaTime * speed;
                 var easeFunction = EasingFunction.GetEasingFunction(easing);
                 var eased = easeFunction(0, 1, t);
-                transform.position = Vector3.Lerp(a, b, eased);
+                transform.localPosition = Vector3.Lerp(a, b, eased);
                 yield return null;
             }
 
-            transform.position = b;
+            transform.localPosition = b;
             Dirty = false;
         }
 
